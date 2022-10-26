@@ -1,9 +1,5 @@
-// Copyright 2016 Zipscene, LLC
-// Licensed under the Apache License, Version 2.0
-// http://www.apache.org/licenses/LICENSE-2.0
-
-const XError = require('xerror');
-const objtools = require('objtools');
+import * as objtools from 'objtools';
+import { PermissionSet } from './permission-set.js';
 
 /**
  * A class to encapsulate the permissions a user has on a specific match object. This is returned
@@ -16,9 +12,15 @@ const objtools = require('objtools');
  * @param {String} target - The target used to generate this grant.
  * @param {String} match - The match used to generate this grant.
  */
-class Grant {
+export class Grant {
+	permissionSet: PermissionSet;
+	grant: any;
+	grantMask: objtools.ObjectMask;
+	_target: string;
+	_match: any;
 
-	constructor(grantObj, target, match) {
+	constructor(permissionSet: PermissionSet, grantObj: any, target: string, match: any) {
+		this.permissionSet = permissionSet;
 		this.grant = grantObj;
 		this.grantMask = new objtools.ObjectMask(this.grant);
 		this._target = target;
@@ -31,7 +33,7 @@ class Grant {
 	 * @method getTarget
 	 * @return {String}
 	 */
-	getTarget() {
+	getTarget(): string {
 		return this._target;
 	}
 
@@ -41,7 +43,7 @@ class Grant {
 	 * @method getMatch
 	 * @return {Object}
 	 */
-	getMatch() {
+	getMatch(): any {
 		return this._match;
 	}
 
@@ -52,11 +54,11 @@ class Grant {
 	 * @param {String} mask - A path in the current grant
 	 * @return {Grant}
 	 */
-	createSubgrantFromMask(mask) {
+	createSubgrantFromMask(mask: string | any): Grant {
 		if (typeof mask === 'string') {
 			mask = this.getMask(mask);
 		}
-		return new Grant(mask, this._target, this._match);
+		return new Grant(this.permissionSet, mask, this._target, this._match);
 	}
 
 	/**
@@ -67,8 +69,8 @@ class Grant {
 	 * @param {Object[]} masks - An array of paths in the current grant
 	 * @return {Grant}
 	 */
-	createSubgrantFromMasks(masks) {
-		let maskObjs = [];
+	createSubgrantFromMasks(masks: any[]): Grant {
+		const maskObjs: any[] = [];
 		for (let i = 0; i < masks.length; i++) {
 			if (typeof masks[i] === 'string') {
 				maskObjs.push(this.getMask(masks[i]));
@@ -76,8 +78,8 @@ class Grant {
 				maskObjs.push(masks[i]);
 			}
 		}
-		let mask = Grant.combineGrants(maskObjs);
-		return new Grant(mask, this._target, this._match);
+		const mask = Grant.combineGrants(maskObjs);
+		return new Grant(this.permissionSet, mask, this._target, this._match);
 	}
 
 	/**
@@ -86,7 +88,7 @@ class Grant {
 	 * @method asObject
 	 * @return {Object} - The grant data.
 	 */
-	asObject() {
+	asObject(): any {
 		return this.grant;
 	}
 
@@ -98,13 +100,13 @@ class Grant {
 	 * @param {String} [prefix] - An optional prefix for the grant field.
 	 * @return {Boolean} - Returns true on success, false on authorization failure.
 	 */
-	has(k, prefix) {
+	has(k: string | string[] | { [k: string]: boolean }, prefix?: string): boolean {
 		if (!prefix) prefix = '';
-		let grantMask = this.grantMask;
+		const grantMask = this.grantMask;
 		if (this.grant === true) return true;
 		if (typeof this.grant !== 'object') return false;
 
-		function checkPath(path) {
+		function checkPath(path: string): boolean {
 			return grantMask.checkPath(path);
 		}
 
@@ -131,22 +133,24 @@ class Grant {
 	 * represented by this functions, argument. An error is thrown on authorization failure.
 	 *
 	 * @method check
-	 * @throws XError
+	 * @throws
 	 * @param {String} k - The grant field to check for.
 	 * @param {String} [prefix] - An optional prefix for the grant field.
 	 * @return {Boolean} - Returns true on success.
 	 */
-	check(k, prefix) {
+	check(k: string | string[] | { [k:string]: boolean }, prefix?: string): boolean {
 		if (!prefix) prefix = '';
 		if (typeof k === 'string') {
 			if (!this.has(k, prefix)) {
 				if (this._target) {
-					throw new XError(XError.ACCESS_DENIED,
+					this.permissionSet.throwAccessError(
 						`Access denied trying to ${prefix}${k} a target of type ${this._target}`,
 						{ grantKey: prefix + k, target: this._target, match: this._match }
 					);
+					return false; //unreachable
 				} else {
-					throw new XError(XError.ACCESS_DENIED, `Access denied trying to ${prefix}${k}`);
+					this.permissionSet.throwAccessError(`Access denied trying to ${prefix}${k}`, {});
+					return false; //unreachable
 				}
 			}
 		} else if (Array.isArray(k)) {
@@ -158,7 +162,7 @@ class Grant {
 				this.check(key, prefix);
 			}
 		} else {
-			throw new XError(XError.INTERNAL_ERROR,
+			this.permissionSet.throwGeneralError(
 				'Supplied invalid key to permission checking function',
 				{ key: k }
 			);
@@ -168,36 +172,29 @@ class Grant {
 
 	/**
 	 * Checks an object against a mask that's a subcomponent of this grant.  If any field is in the object
-	 * that is not matched by the grant, this throws an XError.
+	 * that is not matched by the grant, this throws.
 	 * The mask argument can either be a mask object or a string path to a mask in this grant.
 	 *
 	 * @method checkMask
-	 * @throws XError
+	 * @throws
 	 * @param {String} mask - The name of the mask within the grant to use, e.g. 'updateMask'
 	 * @param {Object} obj - The object to check against.
 	 * @return {Boolean} - Returns true on success.
 	 */
-	checkMask(mask, obj) {
-		let maskPath = mask;
-		mask = new objtools.ObjectMask(this.getMask(maskPath));
-		if (mask === true) return true;
-		if (!mask) {
-			throw new XError(XError.ACCESS_DENIED,
-				`Access denied in ${maskPath || 'mask'} for objects of type ${this._target}`,
-				{ grantKey: maskPath, target: this._target, match: this._match }
-			);
-		}
+	checkMask(maskPath: string, obj: any): boolean {
+		const mask: objtools.ObjectMask = new objtools.ObjectMask(this.getMask(maskPath));
 		if (!obj || typeof obj !== 'object') {
-			throw new XError(XError.INTERNAL_ERROR, 'Tried to do permissions match against non-object');
+			this.permissionSet.throwGeneralError('Tried to do permissions match against non-object', {});
 		}
 
-		let maskedOutFields = mask.getMaskedOutFields(obj);
+		const maskedOutFields: string[] = mask.getMaskedOutFields(obj);
 		if (maskedOutFields.length > 0) {
-			throw new XError(XError.ACCESS_DENIED,
+			this.permissionSet.throwAccessError(
 				`Access denied in ${maskPath || 'mask'} for objects of type ${this._target} ` +
 				`to access field ${maskedOutFields[0]}`,
 				{ grantKey: maskPath, target: this._target, match: this._match }
 			);
+			return false; //unreachable
 		}
 		return true;
 	}
@@ -210,7 +207,7 @@ class Grant {
 	 * @param {String} k - string A dot-separated path in the grant data.
 	 * @return {Mixed} - The contents of the grant portion, or true/false.
 	 */
-	get(k) {
+	get(k: string): any {
 		return this.grantMask.getSubMask(k).toObject();
 	}
 
@@ -221,7 +218,7 @@ class Grant {
 	 * @param {String} k - Path to a numeric grant within the grant data.
 	 * @return {Number} - The max, or null if no such grant exists.
 	 */
-	max(k) {
+	max(k: string): number | null {
 		let val = this.get(k);
 		if (val === true) return Infinity;
 		if (val && val.max === true) return Infinity;
@@ -236,7 +233,7 @@ class Grant {
 	 * @param {String} k - Path to a numeric grant within the grant data.
 	 * @return {Number} - The min, or null if no such grant exists.
 	 */
-	min(k) {
+	min(k: string): number | null {
 		let val = this.get(k);
 		if (val === true) return -Infinity;
 		if (val && val.min === true) return -Infinity;
@@ -248,37 +245,41 @@ class Grant {
 	 * Check a path and number against this grant. This only makes sense if the path points to a numeric grant.
 	 *
 	 * @method checkNumber
-	 * @throws XError
+	 * @throws
 	 * @param {String} k - Path to a numeric grant within the grant data.
 	 * @param {Number} num - The input number to be authorized.
 	 * @return {Boolean} - Returns true on success.
 	 */
-	checkNumber(k, num) {
+	checkNumber(k: string, num: number): boolean {
 		let min = this.min(k);
 		let max = this.max(k);
 		if (typeof min !== 'number' || typeof max !== 'number') {
-			throw new XError(XError.ACCESS_DENIED,
+			this.permissionSet.throwAccessError(
 				'Attempted numeric permission check against non-numeric or missing grant',
 				{ grantKey: k }
 			);
+			return false; //unreachable
 		}
 		if (typeof num !== 'number') {
-			throw new XError(XError.ACCESS_DENIED,
+			this.permissionSet.throwAccessError(
 				'Attempted numeric permission check with non-numeric input',
 				{ grantKey: k, value: num }
 			);
+			return false; //unreachable
 		}
 		if (num < min) {
-			throw new XError(XError.ACCESS_DENIED,
+			this.permissionSet.throwAccessError(
 				'Attempted operation numeric value is smaller than grant minimum',
 				{ grantKey: k, value: num, minimum: min, target: this._target, match: this._match }
 			);
+			return false; //unreachable
 		}
 		if (num > max) {
-			throw new XError(XError.ACCESS_DENIED,
+			this.permissionSet.throwAccessError(
 				'Attempted operation numeric value is greater than grant maximum',
 				{ grantKey: k, value: num, maximum: max, target: this._target, match: this._match }
 			);
+			return false; //unreachable
 		}
 		return true;
 	}
@@ -291,7 +292,7 @@ class Grant {
 	 * @param {String} k - A path in the grant.
 	 * @return {Mixed} - The mask at that path in the grant (can be boolean true or false as well)
 	 */
-	getMask(k) {
+	getMask(k: string): any {
 		let mask = this.get(k);
 		if (mask !== true && typeof mask !== 'object') return false;
 		return mask;
@@ -305,9 +306,9 @@ class Grant {
 	 * @param {Mixed} grant1...n - Grant object contents to combine (not Grant objects, the actual data)
 	 * @return {Object} The combined grant object.
 	 */
-	static combineGrants() {
+	static combineGrants(...args: any[]): any {
 		// This code is copied and modified from objtools addMasks() function
-		let resultMask = false;
+		let resultMask: boolean = false;
 
 		// Adds a single mask (fromMask) into the resultMask mask in-place.  toMask should be an object.
 		// If the resulting mask is a boolean true, this function returns true.  Otherwise, it returns toMask.
@@ -374,14 +375,14 @@ class Grant {
 			return resultMask || false;
 		}
 
-		for (let argIdx = 0; argIdx < arguments.length; argIdx++) {
-			resultMask = addMask(resultMask, arguments[argIdx]);
+		for (let argIdx = 0; argIdx < args.length; argIdx++) {
+			resultMask = addMask(resultMask, args[argIdx]);
 			if (resultMask === true) return true;
 		}
 		return resultMask || false;
 	}
 
-	static grantNumbersToObjects(grantObj) {
+	static grantNumbersToObjects(grantObj: any): any {
 		if (grantObj && typeof grantObj === 'object' && !grantObj.grantNumber) {
 			let newObj = {};
 			for (let k in grantObj) {
@@ -400,4 +401,3 @@ class Grant {
 	}
 }
 
-module.exports = Grant;

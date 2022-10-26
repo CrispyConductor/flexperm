@@ -1,11 +1,12 @@
 {
   "name": "flexperm",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "Flexible, granular, and fast permissions",
-  "main": "./lib/index.js",
+  "main": "./dist/lib/index.js",
+  "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zipscene/flexperm.git"
+    "url": "https://github.com/CrispyConductor/flexperm.git"
   },
   "keywords": [
     "permissions",
@@ -13,19 +14,25 @@
     "acl"
   ],
   "scripts": {
-    "lint": "node ./node_modules/.bin/eslint . || exit 0",
-    "test": "node ./node_modules/.bin/mocha ./test -R spec"
+    "test": "node ./node_modules/.bin/mocha -R spec --node-option enable-source-maps ./dist/test",
+    "build": "tsc"
   },
   "dependencies": {
     "common-query": "^3.0.0",
-    "lodash": "^4.17.20",
-    "objtools": "^3.0.0",
+    "lodash": "^4.17.21",
+    "objtools": "^4.0.0",
     "xerror": "^2.0.0"
   },
   "devDependencies": {
-    "chai": "^4.2.0",
-    "eslint": "^7.7.0",
-    "mocha": "^8.1.2"
+    "@types/chai": "^4.3.3",
+    "@types/lodash": "^4.14.186",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^14.18.32",
+    "@types/objtools": "^2.0.0",
+    "chai": "^4.3.6",
+    "eslint": "^8.26.0",
+    "mocha": "^10.1.0",
+    "typescript": "^4.8.4"
   },
   "license": "Apache-2.0",
   "engines": {

@@ -1,11 +1,6 @@
-// Copyright 2016 Zipscene, LLC
-// Licensed under the Apache License, Version 2.0
-// http://www.apache.org/licenses/LICENSE-2.0
-
-let expect = require('chai').expect;
-let PermissionSet = require('../lib/index');
-let objtools = require('objtools');
-let XError = require('xerror');
+import { expect } from 'chai';
+import { PermissionSet, Grant } from '../lib/index.js';
+import * as objtools from 'objtools';
 
 
 function testGrantValue(grant, expectedValue) {
@@ -52,15 +47,6 @@ describe('Permissions', function() {
 		expect(function() {
 			return new PermissionSet([]);
 		}).to.not.throw(Error);
-	});
-
-	it('asArray()', function() {
-		let permissions = [ {
-			name: 'Tama',
-			animalType: 'cat',
-			grant: true
-		} ];
-		expect(new PermissionSet(permissions).asArray()).to.deep.equal(permissions);
 	});
 
 	it('permission vars', function() {
@@ -338,10 +324,10 @@ describe('Permissions', function() {
 		badQuery['secretData.password'] = 'password';
 		expect(function() {
 			permissionSet.checkExecuteQuery('User', badQuery);
-		}).to.throw(XError);
+		}).to.throw(Error);
 		expect(function() {
 			permissionSet.checkExecuteQuery('MegaUser', query);
-		}).to.throw(XError);
+		}).to.throw(Error);
 		// Test opts to checkExecuteQuery
 		expect(permissionSet.checkExecuteQuery('User', query, {
 			fields: [ 'name', 'age', 'secretData.illNeverTell' ],
@@ -350,39 +336,22 @@ describe('Permissions', function() {
 		}, 'doSomething')).to.equal(true);
 		expect(function() {
 			permissionSet.checkExecuteQuery('User', query, { sort: [ 'birthday' ] });
-		}).to.throw(XError);
+		}).to.throw(Error);
 		expect(function() {
 			permissionSet.checkExecuteQuery('User', query, { limit: 101 });
-		}).to.throw(XError);
+		}).to.throw(Error);
 		expect(function() {
 			permissionSet.checkExecuteQuery('User', query, null, 'doSomethingElse');
-		}).to.throw(XError);
+		}).to.throw(Error);
 	});
 
 });
 
-describe('Legacy permission conversion', function() {
-
-	it('fromLegacyPermissions()', function() {
-		let legacyPermissions = [ {
-			type: 'target',
-			targetType: 'User',
-			target: {
-				ns: 'brand_zcafe'
-			},
-			grant: true
-		} ];
-		let permissionSet = PermissionSet.fromLegacyPermissions(legacyPermissions);
-		testGrantValue(permissionSet.getTargetGrant('User', { ns: 'brand_zcafe' }), true);
-		testGrantValue(permissionSet.getTargetGrant('Snoozer', { ns: 'brand_zcafe' }), false);
-		testGrantValue(permissionSet.getTargetGrant('User', { ns: 'brand_bbbb' }), false);
-	});
-});
 
 describe('Grant', function() {
 
 	function createGrant(grantObj) {
-		return new PermissionSet.Grant(grantObj, 'LiterallyWhoCares', { personWhoCares: null });
+		return new Grant(new PermissionSet([]), grantObj, 'LiterallyWhoCares', { personWhoCares: null });
 	}
 
 	it('accessors: asObject(), getTarget(), getMatch()', function() {
@@ -417,7 +386,7 @@ describe('Grant', function() {
 				}
 			}
 		};
-		let combined = PermissionSet.Grant.combineGrants(grant1, grant2);
+		let combined = Grant.combineGrants(grant1, grant2);
 		expect(combined).to.deep.equal({
 			read: true,
 			query: true,
@@ -452,7 +421,7 @@ describe('Grant', function() {
 				expect(grant.has(hasArg)).to.equal(false);
 				expect(function() {
 					grant.check(hasArg);
-				}).to.throw(XError);
+				}).to.throw(Error);
 			}
 		}
 
@@ -489,7 +458,7 @@ describe('Grant', function() {
 				}
 			}
 		});
-		let obj = {
+		let obj: any = {
 			always: 'hi',
 			stillAlways: 'bye',
 			sometimes: {
@@ -500,7 +469,7 @@ describe('Grant', function() {
 		obj.sometimes.justNotNow = 'try';
 		expect(function() {
 			grant.checkMask('updateMask', obj);
-		}).to.throw(XError);
+		}).to.throw(Error);
 	});
 
 	it('checkNumber()', function() {
@@ -519,15 +488,15 @@ describe('Grant', function() {
 		});
 		expect(function() {
 			grant.checkNumber('hopefullyNumber', 5);
-		}).to.throw(XError);
+		}).to.throw(Error);
 		expect(grant.checkNumber('notNumber', 50000)).to.equal(true);
 		expect(grant.checkNumber('number', 8)).to.equal(true);
 		expect(function() {
 			grant.checkNumber('number', -2);
-		}).to.throw(XError);
+		}).to.throw(Error);
 		expect(function() {
 			grant.checkNumber('number', 13);
-		}).to.throw(XError);
+		}).to.throw(Error);
 		expect(grant.checkNumber('moreNumber', 0)).to.equal(true);
 		expect(grant.checkNumber('moreNumber', 15)).to.equal(true);
 	});

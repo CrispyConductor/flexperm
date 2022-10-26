@@ -1,12 +1,14 @@
-// Copyright 2016 Zipscene, LLC
-// Licensed under the Apache License, Version 2.0
-// http://www.apache.org/licenses/LICENSE-2.0
+import commonQuery from 'common-query';
+const createQuery = commonQuery.createQuery;
 
-const createQuery = require('common-query').createQuery;
-const objtools = require('objtools');
-const Grant = require('./grant');
-const XError = require('xerror');
+import * as objtools from 'objtools';
+import { Grant } from './grant.js';
 
+export type PermissionObject = {
+	target: string,
+	match: { [key: string]: any },
+	grant: { [key: string]: any } | boolean
+};
 
 /**
  * Encapsulate a plain permission array and turns it into a usable object.
@@ -40,10 +42,10 @@ const XError = require('xerror');
  *   var orderPermissionData = { brandId: 'zcafe', orderId: 'abc123' };
  *   permSet.getTargetGrant('ordering', orderPermissionData).check('void'); // returns true
  *   // Is user authorized to submit a specific order?
- *   permSet.getTargetGrant('ordering', orderPermissionData).check('submit'); // throws XError
+ *   permSet.getTargetGrant('ordering', orderPermissionData).check('submit'); // throws
  *   // Is user authorized to submit an order for a different brand?
  *   orderPermissionData.brandId = 'billy-bobs-burger-bayou';
- *   permSet.getTargetGrant('ordering', orderPermissionData).check('void'); // throws XError
+ *   permSet.getTargetGrant('ordering', orderPermissionData).check('void'); // throws
  *   ```
  *
  * @class PermissionSet
@@ -53,14 +55,26 @@ const XError = require('xerror');
  *   any $var statements in the permission match objects.
  * @param {Boolean} [_empty] - Returns an empty PermissionSet object. Intended for internal use only.
  */
-class PermissionSet {
+export class PermissionSet {
+	_array: PermissionObject[] = [];
+	_vars: { [varName: string]: any } = {};
+	_hashCache: { [target: string]: string } = {};
+	_tree: any = null;
 
-	constructor(permArray, permissionVars, _empty) {
+	constructor(permArray: PermissionObject[], permissionVars?: { [varName: string]: any }, _empty?: boolean) {
 		if (_empty) return;
 		this._array = permArray;
-		this._vars = permissionVars;
+		this._vars = permissionVars ?? {};
 		this._hashCache = {};	// cache of hashes by target
 		this.rebuild();
+	}
+
+	throwAccessError(message: string, data: any): void {
+		throw new Error(message);
+	}
+
+	throwGeneralError(message: string, data: any): void {
+		throw new Error(message);
 	}
 
 	/**
@@ -69,44 +83,13 @@ class PermissionSet {
 	 *
 	 * @method rebuild
 	 */
-	rebuild() {
+	rebuild(): void {
 		this._tree = this.buildPermissionTree(this._array, this._vars);
 		this._hashCache = {};
 		// Precompute hashes
 		for (let target in this._tree) {
 			this.getHash(target);
 		}
-	}
-
-	/**
-	 * Constructs a PermissionSet object from a legacy, zsapi1-style permission array. The only changes were
-	 * renaming target -> match and targetType -> target. Throws if input array is not actually an array.
-	 *
-	 * @method fromLegacyPermissions
-	 * @static
-	 * @throws XError
-	 * @param {Object[]} legacyArray - Array of legacy permission objects.
-	 * @return {PermissionSet}
-	 */
-	static fromLegacyPermissions(legacyArray) {
-		if (!Array.isArray(legacyArray)) {
-			throw new XError(XError.INTERNAL_ERROR, 'Legacy permission array parameter is not an array');
-		}
-		legacyArray = objtools.deepCopy(legacyArray);
-		let permissionArray = [];
-		for (let legacyPermission of legacyArray) {
-			if (!legacyPermission) continue;
-			if (legacyPermission.target) {
-				legacyPermission.match = legacyPermission.target;
-				delete legacyPermission.target;
-			}
-			if (legacyPermission.targetType) {
-				legacyPermission.target = legacyPermission.targetType;
-				delete legacyPermission.targetType;
-			}
-			permissionArray.push(legacyPermission);
-		}
-		return new PermissionSet(permissionArray);
 	}
 
 	/**
@@ -119,17 +102,17 @@ class PermissionSet {
 	 * @param {Object} match - The match query object.
 	 * @return {Grant}
 	 */
-	getTargetGrant(target, match) {
-		let tree = this._tree[target];
-		let wildcardTree = this._tree['*'];
-		let grantObjects = [];
+	getTargetGrant(target: string, match: any): Grant {
+		const tree: any = this._tree[target];
+		const wildcardTree: any = this._tree['*'];
+		const grantObjects: any[] = [];
 		if (tree) Array.prototype.push.apply(grantObjects, this.getPermissionTreeMatchingGrants(tree, match));
 		if (wildcardTree) {
 			Array.prototype.push.apply(grantObjects, this.getPermissionTreeMatchingGrants(wildcardTree, match));
 		}
-		if (!grantObjects.length) return new Grant(false, target, match);
-		if (grantObjects.length === 1) return new Grant(grantObjects[0], target, match);
-		return new Grant(Grant.combineGrants.apply(null, grantObjects), target, match);
+		if (!grantObjects.length) return new Grant(this, false, target, match);
+		if (grantObjects.length === 1) return new Grant(this, grantObjects[0], target, match);
+		return new Grant(this, Grant.combineGrants.apply(null, grantObjects), target, match);
 	}
 
 	/**
@@ -139,11 +122,11 @@ class PermissionSet {
 	 * @method asArray
 	 * @return {Object[]}
 	 */
-	asArray() {
+	asArray(): PermissionObject[] {
 		return this._array;
 	}
 
-	toJSON() {
+	toJSON(): any {
 		return this._array;
 	}
 
@@ -155,10 +138,10 @@ class PermissionSet {
 	 * @param {String} target - The target string.
 	 * @return {String[]} - Array of field names.
 	 */
-	getTargetQueryFields(target) {
-		let tree = this._tree[target];
-		let wildcardTree = this._tree['*'];
-		let fieldSet = {};
+	getTargetQueryFields(target: string): string[] {
+		const tree: any = this._tree[target];
+		const wildcardTree: any = this._tree['*'];
+		const fieldSet: { [setKey: string]: boolean } = {};
 		if (tree) this.getPermissionTreeQueryFields(tree, target, fieldSet);
 		if (wildcardTree) this.getPermissionTreeQueryFields(wildcardTree, target, fieldSet);
 		return Object.keys(fieldSet);
@@ -172,17 +155,17 @@ class PermissionSet {
 	 * @param {String} target - The target string.
 	 * @return {String} - The hash string.
 	 */
-	getHash(target) {
-		let targetStr = target ? target : '___';
+	getHash(target?: string | null): string {
+		const targetStr: string = target ? target : '___';
 		if (this._hashCache[targetStr]) return this._hashCache[targetStr];
-		let array = this.asArray();
+		let array: PermissionObject[] = this.asArray();
 		if (target) {
-			array = array.filter(function(p) {
+			array = array.filter(function(p: PermissionObject) {
 				return p.target === target;
 			});
 			if (!array.length) return 'xxxxxxxx';
 		}
-		let hash = objtools.objectHash(array);
+		const hash: string = objtools.objectHash(array);
 		this._hashCache[targetStr] = hash;
 		return hash;
 	}
@@ -200,13 +183,13 @@ class PermissionSet {
 	 * @return {Function} Accepts input objects as its only parameters. This function will return a filtered
 	 *   object, or null, if the user is not authorized to access the object at all.
 	 */
-	createFilterByMask(target, grantPath, maskName) {
-		return (obj) => {
-			let grant = this.getTargetGrant(target, obj || {});
+	createFilterByMask(target: string, grantPath: string, maskName: string): (obj: any) => any | null {
+		return (obj: any) => {
+			const grant: Grant = this.getTargetGrant(target, obj || {});
 			if (!grant.has(grantPath)) return null;
-			let mask = grant.getMask(maskName);
-			mask = new objtools.ObjectMask(mask);
-			return mask.filterObject(obj);
+			const maskData: any = grant.getMask(maskName);
+			const objMask = new objtools.ObjectMask(maskData);
+			return objMask.filterObject(obj);
 		};
 	}
 
@@ -216,7 +199,7 @@ class PermissionSet {
 	 * permission readMask. Authorization failure errors will be thrown.
 	 *
 	 * @method checkExecuteQuery
-	 * @throws XError
+	 * @throws
 	 * @param {String} target - The target string.
 	 * @param {Mixed} query - A CommonQuery, or a plain object in CommonQuery form.
 	 * @param {Object} [queryOptions]
@@ -227,8 +210,8 @@ class PermissionSet {
 	 *   other than 'read' and 'query' (e.g. 'count').
 	 * @return {Boolean} - Boolean true on success.
 	 */
-	checkExecuteQuery(target, query, queryOptions, queryTypeGrantName) {
-		let cQuery;
+	checkExecuteQuery(target: string, query: any, queryOptions?: any, queryTypeGrantName?: string | string[]): boolean {
+		let cQuery: any;
 		if (typeof query.getExactMatches === 'function') {
 			cQuery = query;
 		} else {
@@ -236,12 +219,12 @@ class PermissionSet {
 		}
 
 		// get the query grant for this query
-		let queryGrant = this.getTargetGrant(target, cQuery.getExactMatches().exactMatches);
+		const queryGrant: Grant = this.getTargetGrant(target, cQuery.getExactMatches().exactMatches);
 
 		// Make sure the user has read or query permission for the query
 		if (queryTypeGrantName) {
 			if (!Array.isArray(queryTypeGrantName)) queryTypeGrantName = [ queryTypeGrantName ];
-			for (let grantName of queryTypeGrantName) {
+			for (const grantName of queryTypeGrantName) {
 				queryGrant.check(grantName);
 			}
 		} else {
@@ -255,10 +238,11 @@ class PermissionSet {
 		// Make sure the user can read or query on all sort fields
 		if (queryOptions && queryOptions.sort) {
 			if (!Array.isArray(queryOptions.sort)) {
-				throw new XError(XError.BAD_REQUEST,
+				this.throwGeneralError(
 					'Permission-Set checkExecuteQuery got badly formatted sort option',
 					{ sort: queryOptions.sort }
 				);
+				return false; //unreachable
 			}
 			queryGrant.check(queryOptions.sort.map(function(f) {
 				if (typeof f !== 'string') return '';
@@ -274,10 +258,12 @@ class PermissionSet {
 			queryOptions && typeof queryOptions.limit === 'number'
 		) {
 			if (queryOptions.limit > maxLimit) {
-				throw new XError(XError.ACCESS_DENIED,
+				this.throwAccessError(
 					`The requested limit of ${queryOptions.limit} is above your maximum allowed of ` +
-						`${maxLimit} for type ${target}`
+						`${maxLimit} for type ${target}`,
+					null
 				);
+				return false; //unreachable
 			}
 		}
 
@@ -291,7 +277,7 @@ class PermissionSet {
 	 * @method serialize
 	 * @return {Object} - Object containing serialized data.
 	 */
-	serialize() {
+	serialize(): any {
 		return {
 			_array: this._array,
 			_vars: this._vars,
@@ -308,7 +294,7 @@ class PermissionSet {
 	 * @param {Object} ser - The return value of another PermissionSet's serialize().
 	 * @return {PermissionSet}
 	 */
-	static deserialize(ser) {
+	static deserialize(ser: any): PermissionSet {
 		let p = new PermissionSet(null, null, true);
 		p._array = ser._array;
 		p._vars = ser._vars;
@@ -589,6 +575,3 @@ class PermissionSet {
 
 }
 
-PermissionSet.Grant = Grant;
-
-module.exports = PermissionSet;

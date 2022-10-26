@@ -2,4 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-module.exports = require('./permission-set');
+export * from './permission-set.js';
+export * from './grant.js';
+
