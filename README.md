@@ -50,6 +50,32 @@ getTargetGrant returns a Grant object, which contains information about all the 
 is used to determine whether specific operations are permitted. The methods to use depend on what you are trying to
 do. The use cases for permissions fall into two broad categories, which are outlined below.
 
+### Constructor options
+
+The `PermissionSet` constructor accepts a second `options` argument:
+
+```javascript
+new PermissionSet(permArray, {
+    permissionVars: { userId: 'abc123' },
+    handleMissingVars: (varName) => null
+});
+```
+
+Supported options:
+
+- `permissionVars` (Object): Map of variable names to values. These values are substituted into any `$var`
+    statements in the permission match objects when the `PermissionSet` is built.
+- `handleMissingVars` (Function): Optional callback invoked when a `$var` references a variable that is not
+    present in `permissionVars`. It receives the variable name and returns the value to substitute in its place.
+    When omitted, missing variables cause an error to be thrown. This is useful when permissions are evaluated
+    against a partial set of substitution variables and you want missing references to resolve to a default
+    rather than fail.
+- `empty` (Boolean): Returns an empty `PermissionSet`. Intended for internal use only (e.g. by `deserialize`).
+
+> **Breaking change in 5.0:** Prior versions accepted `permissionVars` as a positional second argument
+> (`new PermissionSet(permArray, permissionVars)`). It now lives on the options object
+> (`new PermissionSet(permArray, { permissionVars })`).
+
 ### Permissions for object access
 
 When dealing with direct object access through the API, permissions are used to restrict what users can do to those
