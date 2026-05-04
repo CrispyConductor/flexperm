@@ -10,6 +10,12 @@ export type PermissionObject = {
 	grant: { [key: string]: any } | boolean
 };
 
+export interface PermissionSetOptions {
+	permissionVars?: { [varName: string]: any };
+	handleMissingVars?: (varName: string) => any;
+	empty?: boolean;
+}
+
 /**
  * Encapsulate a plain permission array and turns it into a usable object.
  *
@@ -51,20 +57,26 @@ export type PermissionObject = {
  * @class PermissionSet
  * @constructor
  * @param {Object[]} permArray - The permission array that this PermissionSet will handle.
- * @param {Object} [permissionVars] - Map of variable names to values. These will be subsituted in for
+ * @param {PermissionSetOptions} [options] - Options for this PermissionSet.
+ * @param {Object} [options.permissionVars] - Map of variable names to values. These will be substituted in for
  *   any $var statements in the permission match objects.
- * @param {Boolean} [_empty] - Returns an empty PermissionSet object. Intended for internal use only.
+ * @param {Function} [options.handleMissingVars] - Optional callback invoked when a $var in a permission match
+ *   references a variable that is not present in `permissionVars`. Receives the variable name and returns the
+ *   replacement value to substitute. When not supplied, missing vars cause an error to be thrown by common-query.
+ * @param {Boolean} [options.empty] - Returns an empty PermissionSet object. Intended for internal use only.
  */
 export class PermissionSet {
 	_array: PermissionObject[] = [];
 	_vars: { [varName: string]: any } = {};
+	_handleMissingVars?: (varName: string) => any;
 	_hashCache: { [target: string]: string } = {};
 	_tree: any = null;
 
-	constructor(permArray: PermissionObject[], permissionVars?: { [varName: string]: any }, _empty?: boolean) {
-		if (_empty) return;
+	constructor(permArray: PermissionObject[], options: PermissionSetOptions = {}) {
+		if (options.empty) return;
 		this._array = permArray;
-		this._vars = permissionVars ?? {};
+		this._vars = options.permissionVars ?? {};
+		this._handleMissingVars = options.handleMissingVars;
 		this._hashCache = {};	// cache of hashes by target
 		this.rebuild();
 	}
@@ -84,7 +96,7 @@ export class PermissionSet {
 	 * @method rebuild
 	 */
 	rebuild(): void {
-		this._tree = this.buildPermissionTree(this._array, this._vars);
+		this._tree = this.buildPermissionTree(this._array, this._vars, this._handleMissingVars);
 		this._hashCache = {};
 		// Precompute hashes
 		for (let target in this._tree) {
@@ -295,7 +307,7 @@ export class PermissionSet {
 	 * @return {PermissionSet}
 	 */
 	static deserialize(ser: any): PermissionSet {
-		let p = new PermissionSet(null, null, true);
+		let p = new PermissionSet(null, { empty: true });
 		p._array = ser._array;
 		p._vars = ser._vars;
 		p._tree = ser._tree;
@@ -414,7 +426,7 @@ export class PermissionSet {
 	 * @param {Mixed} permissionVars
 	 * @return {Object}
 	 */
-	buildPermissionTree(permArray, permissionVars) {
+	buildPermissionTree(permArray, permissionVars, handleMissingVars?: (varName: string) => any) {
 		// We will treat each target type separately.  Construct a map from target types to the contained permissions.
 		let permissionsByTarget = {};
 		for (let perm of permArray) {
@@ -553,7 +565,8 @@ export class PermissionSet {
 					}
 					if (match && typeof match === 'object') {
 						let cQuery = createQuery(match, {
-							vars: permissionVars || {}
+							vars: permissionVars || {},
+							handleMissingVars
 						});
 						perm.match = cQuery.getData();
 					}

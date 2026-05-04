@@ -61,9 +61,39 @@ describe('Permissions', function() {
 				start: true
 			}
 		} ];
-		let permissionSet = new PermissionSet(permissions, { userId: 'asdfasdf' });
+		let permissionSet = new PermissionSet(permissions, { permissionVars: { userId: 'asdfasdf' } });
 		testGrantValue(permissionSet.getTargetGrant('Order', { userId: 'asdfasdf' }), { start: true });
 		testGrantValue(permissionSet.getTargetGrant('Order', { userId: 'aoeuaoeu' }), false);
+	});
+
+	it('handleMissingVars option substitutes a replacement when a $var is missing', function() {
+		let permissions = [ {
+			target: 'Order',
+			match: {
+				userId: { $var: 'userId' },
+				brandId: { $var: 'brandId' }
+			},
+			grant: {
+				start: true
+			}
+		} ];
+		let seen: string[] = [];
+		let permissionSet = new PermissionSet(permissions, {
+			permissionVars: { userId: 'asdfasdf' },
+			handleMissingVars: (varName: string) => {
+				seen.push(varName);
+				return 'fallback-' + varName;
+			}
+		});
+		expect(seen).to.deep.equal([ 'brandId' ]);
+		let permissionArr = permissionSet.asArray();
+		expect(permissionArr[0].match).to.have.property('userId', 'asdfasdf');
+		expect(permissionArr[0].match).to.have.property('brandId', 'fallback-brandId');
+		testGrantValue(
+			permissionSet.getTargetGrant('Order', { userId: 'asdfasdf', brandId: 'fallback-brandId' }),
+			{ start: true }
+		);
+		testGrantValue(permissionSet.getTargetGrant('Order', { userId: 'asdfasdf', brandId: 'other' }), false);
 	});
 
 	it('should return an array of permissions with sustituted vars', function() {
@@ -81,7 +111,9 @@ describe('Permissions', function() {
 				start: true
 			}
 		} ];
-		let permissionSet = new PermissionSet(permissions, { userId: 'asdfasdf', brandId: 'marcos' });
+		let permissionSet = new PermissionSet(permissions, {
+			permissionVars: { userId: 'asdfasdf', brandId: 'marcos' }
+		});
 		let permissionArr = permissionSet.asArray();
 		expect(permissionArr).to.have.length(1);
 		expect(permissionArr[0]).to.have.property('target', 'Order');
